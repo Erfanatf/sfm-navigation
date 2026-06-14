@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+venv/
+env/
+pinn_env/
+*.keras
+*.h5
+*.tflite
+*.pkl
+*.csv
+*.html
+*.png
+*.svg
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# Folders to ignor
+init_test_outputs/
+pipeline_results/
+
+# Calib moods data to include
+!data/calibrated_moods/*

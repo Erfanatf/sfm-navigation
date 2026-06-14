@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sfm-navigation"
+version = "0.1.0"
+description = "Social Force Model simulation for pedestrian-aware robot navigation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "numba",
+    "plotly",
+    "dataclasses; python_version < '3.7'",
+]
+
+[project.scripts]
+sfm-demo = "sfm_navigation.cli.demo:main"
+sfm-run  = "sfm_navigation.cli.run_simulation:main"
+sfm-crowd = "sfm_navigation.cli.crowd_analysis:main"
+sfm-pipeline = "sfm_navigation.cli.pipeline_cli:main"
+sfm-robot-demo = "sfm_navigation.cli.robot_demo:main"
+sfm-transition-analysis = "sfm_navigation.cli.transition_analysis_cli:main"
+sfm-crowd-robot = "sfm_navigation.cli.crowd_robot_demo:main"
+sfm-animate = "sfm_navigation.cli.animate_history:main"
+sfm-plot-control = "sfm_navigation.cli.plot_control_signals:main"
+sfm-compare-controllers-anim = "sfm_navigation.cli.compare_animations:main"
+sfm-compare-controllers-signals = "sfm_navigation.cli.compare_control_signals:main"
+sfm-metrics = "sfm_navigation.cli.metrics_report:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

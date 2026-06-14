@@ -1,0 +1,1 @@
+from .spawner import SFMPedestrianSpawner, generate_safe_static_obstacles

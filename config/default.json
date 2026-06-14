@@ -1,0 +1,51 @@
+{
+  "environment": {
+    "env_width": 100.0,
+    "env_height": 100.0,
+    "dt": 0.1,
+    "max_simulation_time": 200.0
+  },
+  "robot": {
+    "robot_radius": 0.18,
+    "max_linear_vel": 1.2,
+    "min_linear_vel": -0.3,
+    "max_angular_vel": 3.0,
+    "max_linear_accel": 1.8,
+    "max_angular_accel": 1.5,
+    "wheel_base": 0.16
+  },
+  "dwa": {
+    "v_resolution": 0.02,
+    "w_resolution": 0.05,
+    "predict_time": 2.0,
+    "alpha_heading": 0.8,
+    "beta_distance": 0.3,
+    "gamma_velocity": 0.4,
+    "safety_margin": 0.6,
+    "goal_tolerance": 0.3
+  },
+  "pedestrian": {
+    "pedestrian_radius": 0.3,
+    "pedestrian_avg_speed": 1.0
+  },
+  "obstacle": {
+    "obstacle_radius": 0.25,
+    "obstacle_max_speed": 0.6
+  },
+  "vo": {
+    "vo_time_horizon": 5.0,
+    "rvo_responsibility": 0.5
+  },
+  "orca": {
+    "orca_time_horizon": 3.0,
+    "orca_time_horizon_obst": 2.0
+  },
+  "costmap": {
+    "costmap_resolution": 0.1,
+    "inflation_radius": 0.5
+  },
+  "visualization": {
+    "trajectory_history_length": 100,
+    "animation_fps": 10
+  }
+}
