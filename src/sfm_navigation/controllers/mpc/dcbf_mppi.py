@@ -432,9 +432,8 @@ class DCBFMPPIController(MPPIController):
             dt = self.config.dt
 
         circles, walls = self._convert_obstacles(obstacles)
-        circles = _filter_by_distance(circles, x, y, radius=4.0)
-        
         x, y, theta = robot_state.x, robot_state.y, robot_state.theta
+        circles = _filter_by_distance(circles, x, y, radius=4.0)
 
         # 2. Check if nominal command is already safe
         x_next_nom, y_next_nom, _ = diff_drive_dynamics(
