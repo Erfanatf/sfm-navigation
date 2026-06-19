@@ -23,7 +23,7 @@ def main():
     parser.add_argument(
         "--csv",
         type=str,
-        default="/home/erfanatf/Documents/notebooks/content/drive/MyDrive/ATC_data/atc-20121114.csv",
+        default=CONFIG.atc_csv_path,
     )
     parser.add_argument("--bin", type=int, default=4)
     parser.add_argument(

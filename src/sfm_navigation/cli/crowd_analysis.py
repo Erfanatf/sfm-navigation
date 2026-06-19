@@ -1,12 +1,14 @@
 import sys
 import argparse
+
+from sfm_navigation.config import CONFIG
 from ..data.atc_loader import load_atc_raw
 from ..crowd_analysis.binning import convert_units, bin_data, select_bin_data
 from ..crowd_analysis.visualization import create_crowd_animation
 
 def main():
     parser = argparse.ArgumentParser(description="ATC crowd analysis and animation")
-    parser.add_argument('--csv', type=str, default='/home/erfanatf/Documents/notebooks/content/drive/MyDrive/ATC_data/atc-20121114.csv',
+    parser.add_argument('--csv', type=str, default=CONFIG.atc_csv_path,
                         help="Path to the big ATC CSV file (e.g., atc-20121114.csv)")
     parser.add_argument('--bin', type=int, default=4,
                         help="Index of the bin to display (0 = most crowded)")

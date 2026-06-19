@@ -22,7 +22,7 @@ from ..controllers.dwa.dw4do import DW4DO
 from ..controllers.dwa.dwa_vo import DWA_VO
 from ..controllers.mpc.mppi import MPPIController
 from ..controllers.mpc.dcbf_mppi import DCBFMPPIController
-from ..prediction.lstm_predictor import LSTMPredictor
+# from ..prediction.lstm_predictor import LSTMPredictor
 
 
 def _auto_register_calibrated_moods(moods_dir="data/calibrated_moods"):
@@ -130,7 +130,7 @@ def main():
     parser.add_argument(
         "--data-folder",
         type=str,
-        default="/home/erfanatf/Documents/algorithms-playground/content/drive/MyDrive/ATC_data/",
+        default=CONFIG.atc_csv_folder,
         help="Path to ATC data folder",
     )
     parser.add_argument(
@@ -364,13 +364,14 @@ def main():
 
     # --- LSTM predictor (optional) ---
     if args.use_lstm_predictor:
-        lstm_predictor = LSTMPredictor(
-            model_path="src/sfm_navigation/prediction/LSTM_2ndOrder_yaw_rate_rem.keras",
-            state_scaler_path="src/sfm_navigation/prediction/state_scaler.pkl",
-            delta_scaler_path="src/sfm_navigation/prediction/delta_scaler.pkl",
-        )
-        lstm_predictor.initialize_buffer(user_traj, start_time=0.0)
-        print("LSTM predictor initialised.")
+        # lstm_predictor = LSTMPredictor(
+        #     model_path="src/sfm_navigation/prediction/LSTM_2ndOrder_yaw_rate_rem.keras",
+        #     state_scaler_path="src/sfm_navigation/prediction/state_scaler.pkl",
+        #     delta_scaler_path="src/sfm_navigation/prediction/delta_scaler.pkl",
+        # )
+        # lstm_predictor.initialize_buffer(user_traj, start_time=0.0)
+        # print("LSTM predictor initialised.")
+        print("LSTM predictor is currently disabled due to loading issues. Using constant velocity prediction instead.")
     else:
         lstm_predictor = None
 

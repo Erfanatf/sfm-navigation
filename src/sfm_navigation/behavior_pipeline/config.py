@@ -16,7 +16,8 @@ class PipelineConfig:
     progress_interval: int = 50               # print progress every N windows
 
     # ---------- Stage 0 ----------
-    atc_csv_path: str = "/home/erfanatf/Documents/notebooks/content/drive/MyDrive/ATC_data/atc-20121114.csv"
+    atc_csv_path: str = "data/ATC_data/atc-20121114.csv"
+    atc_csv_folder: str = "data/ATC_data/"
     bin_width_sec: float = 300.0
     n_top_bins: int = 10
 

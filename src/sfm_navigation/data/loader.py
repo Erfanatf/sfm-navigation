@@ -69,7 +69,7 @@ def load_and_process_trajectory(file_path):
     return x_true, avg_dt
 
 
-def load_multiple_trajectories(data_folder, file_pattern='*.csv', n=None):
+def load_multiple_trajectories(data_folder, file_pattern='person_*.csv', n=None):
     """Load multiple trajectory files from a folder, returning all_x_true, all_dt, AVG_DT."""
     all_file_paths = sorted(glob.glob(data_folder + file_pattern))
     if n is not None:

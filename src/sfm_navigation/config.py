@@ -59,6 +59,10 @@ class SimulationConfig:
     trajectory_history_length: int = 100
     animation_fps: int = 10
 
+    # ==================== Data Paths ====================
+    atc_csv_path: str = "data/ATC_data/atc-20121114.csv"
+    atc_csv_folder: str = "data/ATC_data/"
+    
     def __post_init__(self):
         """Validate configuration parameters."""
         assert self.max_linear_vel > self.pedestrian_avg_speed, \

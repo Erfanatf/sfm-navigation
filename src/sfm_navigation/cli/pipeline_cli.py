@@ -6,7 +6,7 @@ from ..behavior_pipeline.pipeline_runner import PipelineRunner
 
 def main():
     parser = argparse.ArgumentParser(description="Run the behavior profiling pipeline.")
-    parser.add_argument('--data-source', type=str, default='/home/erfanatf/Documents/notebooks/content/drive/MyDrive/ATC_data/atc-20121114.csv',
+    parser.add_argument('--data-source', type=str, default=CONFIG.atc_csv_path,
                         help='Path to ATC CSV file (or vision recording file)')
     parser.add_argument('--output-dir', type=str, default='pipeline_results',
                         help='Output directory for results')

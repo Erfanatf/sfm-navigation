@@ -25,3 +25,4 @@ pipeline_results/
 
 # Calib moods data to include
 !data/calibrated_moods/*
+!data/ATC_data/*

@@ -45,7 +45,7 @@ def main():
     LOG_WINDOW_DURATION = 5.0
 
     # Path to ATC data (adjust as needed, or pass as argument)
-    DRIVE_DATA_FOLDER = '/home/erfanatf/Documents/algorithms-playground/content/drive/MyDrive/ATC_data/'
+    DRIVE_DATA_FOLDER = CONFIG.atc_csv_folder
     # For flexibility, allow command line argument
     if len(sys.argv) > 1:
         DRIVE_DATA_FOLDER = sys.argv[1]

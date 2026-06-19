@@ -15,7 +15,7 @@ def safe_savgol_filter(data, w, p):
     return savgol_filter(data, W, p)
 
 def main():
-    DRIVE_DATA_FOLDER = '/home/erfanatf/Documents/notebooks/content/drive/MyDrive/ATC_data/'
+    DRIVE_DATA_FOLDER = CONFIG.atc_csv_folder
     file_paths = sorted(glob.glob(DRIVE_DATA_FOLDER + '*.csv'))[10:24]
     all_x_true = []
     for path in file_paths:
