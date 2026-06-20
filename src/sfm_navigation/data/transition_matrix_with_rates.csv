@@ -1,0 +1,10 @@
+from,to,prob,rate
+Brisk_Individualist,Brisk_Individualist,0.8, 0.5
+Brisk_Individualist,Relaxed_Ped,0.1, 0.5
+Brisk_Individualist,Social_Walker,0.1, 0.5
+Relaxed_Ped,Relaxed_Ped,0.7, 0.5
+Relaxed_Ped,Social_Walker,0.2, 0.5
+Relaxed_Ped,Brisk_Individualist,0.1, 0.5
+Social_Walker,Social_Walker,0.6, 0.5
+Social_Walker,Relaxed_Ped,0.3, 0.5
+Social_Walker,Brisk_Individualist,0.1, 0.5
