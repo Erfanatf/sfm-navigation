@@ -1,3 +1,4 @@
+import json, socket
 import os, sys, time, webbrowser, argparse
 import numpy as np
 import pandas as pd
@@ -24,6 +25,14 @@ from ..controllers.mpc.mppi import MPPIController
 from ..controllers.mpc.dcbf_mppi import DCBFMPPIController
 # from ..prediction.lstm_predictor import LSTMPredictor
 
+def send_sim_state(state_dict, host="127.0.0.1", port=9998):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        msg = json.dumps(state_dict).encode()
+        sock.sendto(msg, (host, port))
+        sock.close()
+    except Exception:
+        pass
 
 def _auto_register_calibrated_moods(moods_dir="data/calibrated_moods"):
     if not os.path.isdir(moods_dir):
@@ -433,9 +442,20 @@ def main():
     v_cmd_held = 0.0
     omega_cmd_held = 0.0
 
+    # Set up non‑blocking UDP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 9999))
+    sock.setblocking(False)
+    
+    # Variable to hold the latest ω
+    external_omega = 0.0
+    
     print(f"Running simulation for {sim_duration:.2f}s ({n_steps} steps)...")
     t_total_start = time.perf_counter()
+    wall_start = time.perf_counter()
     for step in range(n_steps):
+        # Real-time sync: start wall clock
         t = step * sfm_dt
         user_x, user_y = user_traj.get_position_at_time(t)
         user_state = user_traj.get_state_at_time(t)
@@ -481,6 +501,7 @@ def main():
             ])
         pedestrian_params = np.array(pedestrian_params) if len(pedestrian_params) > 0 else np.empty((0, 7))
 
+
         # ── Goal logic ──────────────────────────────────────────────
         lookahead = 2.0
         lstm_pred_time = 0.0
@@ -496,29 +517,49 @@ def main():
             ]
         )
 
+        # Receive latest ω from rotation predictor (non‑blocking)
+        try:
+            data, _ = sock.recvfrom(1024)
+            external_omega = float(data.decode().strip())
+        except BlockingIOError:
+            pass   # no new data; use previous ω
+        except Exception:
+            external_omega = 0.0
+
         if args.use_lstm_predictor and lstm_predictor is not None:
             goal_x, goal_y, lstm_pred_time = lstm_predictor.predict(user_state_raw)
         else:
-            # Original constant‑velocity logic (unchanged)
             if user_speed < STATIONARY_SPEED_THRESHOLD:
                 goal_dist = user_traj.safety_radius + 0.5
                 goal_x = user_x + goal_dist * np.cos(user_facing)
                 goal_y = user_y + goal_dist * np.sin(user_facing)
             else:
-                future_time = t + lookahead
-                if future_time < user_traj.total_duration:
-                    goal_x = user_x + dx * 2.0 / sfm_dt
-                    goal_y = user_y + dy * 2.0 / sfm_dt
+                # ----- New: use external ω if available -----
+                if abs(external_omega) > 1e-6:
+                    # Unicycle model: constant speed, constant turn rate
+                    v = user_speed
+                    theta0 = user_facing
+                    omega = external_omega
+                    r = v / omega
+                    dtheta = omega * lookahead
+                    goal_x = user_x + r * (np.sin(theta0 + dtheta) - np.sin(theta0))
+                    goal_y = user_y - r * (np.cos(theta0 + dtheta) - np.cos(theta0))
                 else:
-                    last_x, last_y = user_traj.get_position_at_time(
-                        user_traj.total_duration
-                    )
-                    last_v = user_traj.avg_velocity
-                    dir_x, dir_y = user_traj.get_direction_at_time(
-                        user_traj.total_duration - 0.1
-                    )
-                    goal_x = last_x + dir_x * last_v * lookahead
-                    goal_y = last_y + dir_y * last_v * lookahead
+                    # Fallback: original constant‑velocity straight line
+                    future_time = t + lookahead
+                    if future_time < user_traj.total_duration:
+                        goal_x = user_x + dx * 2.0 / sfm_dt
+                        goal_y = user_y + dy * 2.0 / sfm_dt
+                    else:
+                        last_x, last_y = user_traj.get_position_at_time(
+                            user_traj.total_duration
+                        )
+                        last_v = user_traj.avg_velocity
+                        dir_x, dir_y = user_traj.get_direction_at_time(
+                            user_traj.total_duration - 0.1
+                        )
+                        goal_x = last_x + dir_x * last_v * lookahead
+                        goal_y = last_y + dir_y * last_v * lookahead
         # ────────────────────────────────────────────────────────────
 
         user_info = {
@@ -820,6 +861,78 @@ def main():
             )
             robot_traj_abs.append((robot.state.x, robot.state.y))
 
+
+        if step % FRAME_SKIP == 0:
+            # Build state dict for live view
+            # Gather nearest pedestrians (unchanged)
+            ped_list = []
+            for p in spawner.pedestrians:
+                ped_list.append((p.x, p.y, p.radius))
+            ped_list.sort(key=lambda pt: np.hypot(pt[0]-user_x, pt[1]-user_y))
+            ped_list = ped_list[:10]
+
+            # ---- Sample user ground‑truth trajectory up to current time ----
+            traj_points = []
+            sample_dt = sfm_dt * 5
+            n_samples = int(t / sample_dt) + 1
+            for i in range(n_samples):
+                ts = i * sample_dt
+                ux, uy = user_traj.get_position_at_time(ts)
+                traj_points.append((ux, uy))
+
+            # ---- Compute predicted user arc (same logic as goal) ----
+            user_arc = []
+            n_arc_pts = 20
+            if user_speed >= STATIONARY_SPEED_THRESHOLD and abs(external_omega) > 1e-6:
+                # Unicycle model arc
+                v = user_speed
+                theta0 = user_facing
+                omega = external_omega
+                r = v / omega
+                dtheta = omega * lookahead
+                angles = np.linspace(0, dtheta, n_arc_pts)
+                for ang in angles:
+                    ax = user_x + r * (np.sin(theta0 + ang) - np.sin(theta0))
+                    ay = user_y - r * (np.cos(theta0 + ang) - np.cos(theta0))
+                    user_arc.append((ax, ay))
+            elif user_speed >= STATIONARY_SPEED_THRESHOLD:
+                # Straight line arc
+                total_dist = user_speed * lookahead
+                for k in range(n_arc_pts + 1):
+                    frac = k / n_arc_pts
+                    ax = user_x + frac * total_dist * np.cos(user_facing)
+                    ay = user_y + frac * total_dist * np.sin(user_facing)
+                    user_arc.append((ax, ay))
+            else:
+                # Stationary – just a dot at user position
+                user_arc = [(user_x, user_y)]
+            # -------------------------------------------------------
+
+            state = {
+                "user": (user_x, user_y, user_facing),
+                "robot": (robot.state.x, robot.state.y, robot.state.theta),
+                "goal": (goal_x, goal_y),
+                "arc": list(zip(arc_x, arc_y)),
+                "user_arc": user_arc,
+                "pedestrians": ped_list,
+                "user_traj": traj_points,
+                "user_speed": user_speed,              # ← new
+                "robot_speed": robot.state.v,          # ← new
+            }
+            send_sim_state(state)
+
+        # ── Real‑time synchronization ────────────────────────────
+        expected_wall = t                                 # simulation time we want to be at
+        elapsed_wall = time.perf_counter() - wall_start
+        sleep_time = expected_wall - elapsed_wall
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        elif step > 0 and step % 100 == 0:               # occasional warning (skip t=0)
+            rt_factor = elapsed_wall / (t + 1e-9)
+            print(f"[sync] Simulation lagging: sim {t:.2f}s, wall {elapsed_wall:.2f}s, RT factor {rt_factor:.3f}")
+        # ──────────────────────────────────────────────────────────
+
+    sock.close()
     t_total = time.perf_counter() - t_total_start
     print(f"Simulation complete in {t_total:.1f}s")
 
