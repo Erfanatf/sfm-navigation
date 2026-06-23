@@ -23,7 +23,9 @@ from ..controllers.dwa.dw4do import DW4DO
 from ..controllers.dwa.dwa_vo import DWA_VO
 from ..controllers.mpc.mppi import MPPIController
 from ..controllers.mpc.dcbf_mppi import DCBFMPPIController
+
 # from ..prediction.lstm_predictor import LSTMPredictor
+
 
 def send_sim_state(state_dict, host="127.0.0.1", port=9998):
     try:
@@ -33,6 +35,7 @@ def send_sim_state(state_dict, host="127.0.0.1", port=9998):
         sock.close()
     except Exception:
         pass
+
 
 def _auto_register_calibrated_moods(moods_dir="data/calibrated_moods"):
     if not os.path.isdir(moods_dir):
@@ -264,6 +267,12 @@ def main():
         default=False,
         help="Use LSTM network to predict the user's future path",
     )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        default=False,
+        help="Run as fast as possible (no real‑time sync, no UDP)",
+    )
 
     args = parser.parse_args()
 
@@ -301,7 +310,7 @@ def main():
     OBSTACLE_SAFETY_MARGIN = 0.5
     ENABLE_LOGGING = True
     LOG_WINDOW_DURATION = 5.0
-    DESIRED_CONTROL_FREQ = 10.0
+    DESIRED_CONTROL_FREQ = 12.0
     STATIONARY_SPEED_THRESHOLD = 0.1
 
     DRIVE_DATA_FOLDER = args.data_folder
@@ -380,7 +389,9 @@ def main():
         # )
         # lstm_predictor.initialize_buffer(user_traj, start_time=0.0)
         # print("LSTM predictor initialised.")
-        print("LSTM predictor is currently disabled due to loading issues. Using constant velocity prediction instead.")
+        print(
+            "LSTM predictor is currently disabled due to loading issues. Using constant velocity prediction instead."
+        )
     else:
         lstm_predictor = None
 
@@ -442,19 +453,23 @@ def main():
     v_cmd_held = 0.0
     omega_cmd_held = 0.0
 
-    # Set up non‑blocking UDP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", 9999))
-    sock.setblocking(False)
-    
+    if not args.batch:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 9999))
+        sock.setblocking(False)
+    else:
+        sock = None
+
     # Variable to hold the latest ω
     external_omega = 0.0
-    
+
     print(f"Running simulation for {sim_duration:.2f}s ({n_steps} steps)...")
     t_total_start = time.perf_counter()
     wall_start = time.perf_counter()
     for step in range(n_steps):
+        loop_start = time.perf_counter()
+
         # Real-time sync: start wall clock
         t = step * sfm_dt
         user_x, user_y = user_traj.get_position_at_time(t)
@@ -492,17 +507,26 @@ def main():
         pedestrian_params = []
         for ped in spawner.pedestrians:
             params = CUSTOM_MOODS.get(ped.mood, {})
-            pedestrian_params.append([
-                ped.x, ped.y, ped.theta,                     # position & heading
-                params.get("B_ped", 0.5),
-                params.get("lam_base", 0.5),
-                params.get("phi_fov", np.deg2rad(90)),
-                params.get("theta_gaze", 0.0)
-            ])
-        pedestrian_params = np.array(pedestrian_params) if len(pedestrian_params) > 0 else np.empty((0, 7))
-
+            pedestrian_params.append(
+                [
+                    ped.x,
+                    ped.y,
+                    ped.theta,  # position & heading
+                    params.get("B_ped", 0.5),
+                    params.get("lam_base", 0.5),
+                    params.get("phi_fov", np.deg2rad(90)),
+                    params.get("theta_gaze", 0.0),
+                ]
+            )
+        pedestrian_params = (
+            np.array(pedestrian_params)
+            if len(pedestrian_params) > 0
+            else np.empty((0, 7))
+        )
 
         # ── Goal logic ──────────────────────────────────────────────
+        t_pred_start = time.perf_counter()
+
         lookahead = 2.0
         lstm_pred_time = 0.0
 
@@ -518,13 +542,14 @@ def main():
         )
 
         # Receive latest ω from rotation predictor (non‑blocking)
-        try:
-            data, _ = sock.recvfrom(1024)
-            external_omega = float(data.decode().strip())
-        except BlockingIOError:
-            pass   # no new data; use previous ω
-        except Exception:
-            external_omega = 0.0
+        if sock is not None:
+            try:
+                data, _ = sock.recvfrom(1024)
+                external_omega = float(data.decode().strip())
+            except BlockingIOError:
+                pass
+            except Exception:
+                external_omega = 0.0
 
         if args.use_lstm_predictor and lstm_predictor is not None:
             goal_x, goal_y, lstm_pred_time = lstm_predictor.predict(user_state_raw)
@@ -560,6 +585,8 @@ def main():
                         )
                         goal_x = last_x + dir_x * last_v * lookahead
                         goal_y = last_y + dir_y * last_v * lookahead
+
+        pred_elapsed = time.perf_counter() - t_pred_start
         # ────────────────────────────────────────────────────────────
 
         user_info = {
@@ -576,7 +603,8 @@ def main():
         }
 
         # ── Control update at desired frequency ──────────────────
-        if t >= next_control_time - 1e-12:  # small tolerance
+        t_ctrl_start = time.perf_counter()
+        if t >= next_control_time - 1e-12:
             v_cmd, omega_cmd = controller.compute_velocity(
                 robot.state,
                 (goal_x, goal_y),
@@ -584,14 +612,13 @@ def main():
                 user=user_info,
                 dt=desired_period,
                 sim_time=t,
-                pedestrian_params=pedestrian_params
+                pedestrian_params=pedestrian_params,
             )
             v_cmd_held, omega_cmd_held = v_cmd, omega_cmd
             next_control_time += desired_period
         else:
-            # Hold previous command
             v_cmd, omega_cmd = v_cmd_held, omega_cmd_held
-
+        ctrl_elapsed = time.perf_counter() - t_ctrl_start
         # ──────────────────────────────────────────────────────────
 
         # Target path (unchanged)
@@ -635,7 +662,9 @@ def main():
         lin_accel, ang_accel = robot.accel_history[-1]
         lin_jerk, ang_jerk = robot.jerk_history[-1]
 
-        # … (the rest of the loop – DOB capture, collision check, history, frames – stays exactly as before) …
+        loop_elapsed = time.perf_counter() - loop_start
+        elapsed_wall = time.perf_counter() - wall_start
+
         # Note: the history block should use v_cmd, omega_cmd (which are the held values) and all flags as usual.
 
         # Capture DOB estimate and external disturbance
@@ -675,7 +704,9 @@ def main():
         if step % max(1, n_steps // 10) == 0:
             print(
                 f"  Step {step}/{n_steps}, RT factor: {rt_factor:.4f} "
-                f"(compute {controller.last_compute_time*1000:.2f}ms), "
+                f"(controller compute: {controller.last_compute_time*1000:.2f}ms, "
+                f"prediction: {pred_elapsed*1000:.2f}ms, "
+                f"total loop: {loop_elapsed*1000:.1f}ms), "
                 f"Prediction Time: {lstm_pred_time*1000:.2f}ms"
             )
 
@@ -734,6 +765,8 @@ def main():
                 "soft_recovery_active": soft_recovery_now,
                 "rotation_active": rotation_now,
                 "lstm_pred_time": lstm_pred_time,
+                "sim_rt_factor": elapsed_wall / (t + 1e-9) if t > 0 else 0.0,
+                "predictor_loop_time_ms": 0.0,  # placeholder; filled from predictor log if needed
             }
         )
         for ped in spawner.pedestrians:
@@ -861,14 +894,13 @@ def main():
             )
             robot_traj_abs.append((robot.state.x, robot.state.y))
 
-
         if step % FRAME_SKIP == 0:
             # Build state dict for live view
             # Gather nearest pedestrians (unchanged)
             ped_list = []
             for p in spawner.pedestrians:
                 ped_list.append((p.x, p.y, p.radius))
-            ped_list.sort(key=lambda pt: np.hypot(pt[0]-user_x, pt[1]-user_y))
+            ped_list.sort(key=lambda pt: np.hypot(pt[0] - user_x, pt[1] - user_y))
             ped_list = ped_list[:10]
 
             # ---- Sample user ground‑truth trajectory up to current time ----
@@ -916,23 +948,34 @@ def main():
                 "user_arc": user_arc,
                 "pedestrians": ped_list,
                 "user_traj": traj_points,
-                "user_speed": user_speed,              # ← new
-                "robot_speed": robot.state.v,          # ← new
-            }
-            send_sim_state(state)
+                "user_speed": user_speed,
+                "robot_speed": robot.state.v,
+                "sim_rt_factor": elapsed_wall / (t + 1e-9) if t > 0 else 0.0,
+                "loop_time_ms": loop_elapsed * 1000,
+                "pred_time_ms": pred_elapsed * 1000,
+                "ctrl_time_ms": ctrl_elapsed * 1000,
+                }
+
+            if not args.batch:
+                send_sim_state(state)
 
         # ── Real‑time synchronization ────────────────────────────
-        expected_wall = t                                 # simulation time we want to be at
-        elapsed_wall = time.perf_counter() - wall_start
-        sleep_time = expected_wall - elapsed_wall
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        elif step > 0 and step % 100 == 0:               # occasional warning (skip t=0)
-            rt_factor = elapsed_wall / (t + 1e-9)
-            print(f"[sync] Simulation lagging: sim {t:.2f}s, wall {elapsed_wall:.2f}s, RT factor {rt_factor:.3f}")
+        if not args.batch:
+            expected_wall = t
+            sleep_time = expected_wall - elapsed_wall
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            elif step > 0 and step % 100 == 0:
+                rt_factor = elapsed_wall / (t + 1e-9)
+                print(
+                    f"[sync] Simulation lagging: sim {t:.2f}s, wall {elapsed_wall:.2f}s, "
+                    f"RT factor {rt_factor:.3f}"
+                )
         # ──────────────────────────────────────────────────────────
 
-    sock.close()
+    if sock is not None:
+        sock.close()
+
     t_total = time.perf_counter() - t_total_start
     print(f"Simulation complete in {t_total:.1f}s")
 

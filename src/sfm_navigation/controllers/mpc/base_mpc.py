@@ -71,7 +71,7 @@ class BaseMPCController(BaseController):
         self.LPF = ControlLPF(alpha=0.45)
         self.maneuver_LPF = ControlLPF(alpha=0.45)
         self.DOB_LPF = ControlLPF(alpha=0.45)
-        self.dob = ManeuverDOB(dt=0.05, L=5.0, tau=0.2)
+        self.dob = ManeuverDOB(dt=0.1, L=8.0, tau=0.3)
 
         # Logging storage
         self._v_flt = 0.0
